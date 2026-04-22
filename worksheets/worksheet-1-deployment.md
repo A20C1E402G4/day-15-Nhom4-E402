@@ -67,140 +67,212 @@ Rationale:
 - Google Cloud's VPC Service Controls allow hard perimeter around PII-adjacent workloads.
 - Strong ecosystem fit with the rest of the stack (Artifact Registry, Cloud Armor, Cloud CDN, Secret Manager).
 
-### 5.2 Architecture diagram
+### 5.2 Diagram 1 — General design overview
 
 ```mermaid
 flowchart TB
-    subgraph USERS["👥 End Users"]
-        direction LR
-        CS["CS Agent"]
-        DISP["Dispatch Coordinator"]
-        SUP["Ops Supervisor"]
-    end
+    USERS["👥 Users\nCS Agent · Dispatch · Supervisor"]
 
-    subgraph CICD["⚙️ CI/CD Pipeline  (outside cluster)"]
-        direction LR
-        DEV["Developer"] -->|commit| GH["GitHub"]
-        GH -->|trigger| GHA["GitHub Actions"]
-        GHA -->|push image| AR["Artifact Registry\nGCP"]
-        TF["Terraform\nIaC"] -->|provision| INFRA["GKE Cluster\nVPC · Cloud VPN · Secrets"]
-        AR -->|"Helm rolling deploy"| NGINX
-        AR -->|"Helm rolling deploy"| ORCH
-    end
-
-    subgraph GKE["☸️ GKE Cluster · asia-southeast1  (Singapore)  ·  private VPC nodes"]
-
-        subgraph NS_ING["Ingress Namespace"]
-            CA["Cloud Armor\nWAF · DDoS · Rate-limit\nIP allowlist"]
-            NGINX["Nginx Ingress\nTLS 1.3 termination"]
-            KEYCLOAK["Keycloak\nJWT issuance\nRBAC: CS · dispatch · supervisor"]
-            PIISVC["PII Scrubber\nregex + NER\npseudonymise name / phone / address"]
-        end
-
-        subgraph NS_APP["Application Namespace  ·  HPA 3 → 10 replicas"]
-            ORCH["Agent Orchestrator\nFastAPI + LangGraph\nReAct loop · audit writer"]
-            CLF["Query Classifier\nHaiku 4.5  ~200 tokens\nstatus_lookup · ticket_action · sop_question · escalate"]
-            RCACHE["Redis Semantic Cache\ncosine ≥ 0.92\nTTL 60 s status  ·  5 min SOP"]
-            LITELLM["LiteLLM Proxy\nunified OpenAI-compat API\nrouting · retry · circuit-breaker"]
-            ADPT["Integration Adapter\nTMS REST · SAP OMS · Freshdesk API · Driver webhook"]
-            HRQ["Human Review Queue\nRedis Streams\nconfidence < 0.7  →  supervisor approval"]
-        end
-
-        subgraph NS_DATA["Data Namespace"]
-            QDRANT[("Qdrant\nVector DB\nSOP / runbook embeddings\ntext-embedding-3-small")]
-            PG[("PostgreSQL 16\nAudit Trail · User Sessions\nStatefulSet + PVC\nappend-only audit role")]
-            REDISDB[("Redis 7\n3-node cluster\ncache · streams · pub/sub")]
-        end
-
-        subgraph NS_LOG["Logging Namespace  (ELK)"]
-            FB["Filebeat\nDaemonSet\ncollect stdout from all pods"]
-            LS["Logstash\nparse · filter · enrich\nPII field masking"]
-            ES[("Elasticsearch\n3-node cluster\n30-day hot · 90-day warm")]
-            KB["Kibana\nOps dashboards\nagent-requests · llm-calls · errors · pii-audit"]
-        end
-
-        subgraph NS_MON["Monitoring Namespace"]
-            PROM["Prometheus\nscrape /metrics every 15 s"]
-            GRAF["Grafana\nSLO dashboards\ncost-per-query · cache hit rate"]
-            AM["Alertmanager\np95 > 5 s · error > 1%\ncache hit < 40% · PII scrub fail"]
-        end
-
+    subgraph GKE["☸️ GKE Cluster · asia-southeast1"]
+        ING["Ingress Namespace\nCloud Armor · Nginx · Keycloak · PII Scrubber"]
+        APP["Application Namespace\nOrchestrator · LiteLLM Proxy · Semantic Cache\nIntegration Adapter · Human Review Queue"]
+        DATA["Data Namespace\nQdrant (Vector DB) · PostgreSQL (Audit) · Redis"]
+        LOG["Logging Namespace\nFilebeat → Logstash → Elasticsearch → Kibana"]
+        MON["Monitoring Namespace\nPrometheus → Grafana · Alertmanager"]
     end
 
     subgraph ONPREM["🏭 On-Prem DC · Hanoi"]
-        VPNGW["Cloud VPN HA\nencrypted tunnel  ·  99.99% SLA"]
-        VLLM["vLLM\nLlama 3.1 8B INT4\n1× A100 40 GB\nfallback + overnight batch triage"]
+        VLLM["vLLM · Llama 3.1 8B\nfallback + batch"]
     end
 
-    subgraph PROVIDERS["☁️ LLM API Providers"]
-        CLAUDE["Anthropic  (primary)\nHaiku 4.5 · Sonnet 4.6 · Opus 4.7"]
-        OAI["OpenAI  (secondary fallback)\nGPT-4o-mini"]
+    subgraph CLOUD["☁️ External Services"]
+        LLM["LLM Providers\nAnthropic (primary) · OpenAI (secondary)"]
+        BIZ["Business Systems\nTMS · SAP OMS · Freshdesk · Driver App"]
+        OBS["Observability & Alerting\nLangfuse · PagerDuty · Slack"]
     end
 
-    subgraph BIZSYS["🔗 Business Systems"]
-        TMS["TMS"]
-        OMS["SAP OMS"]
-        FD["Freshdesk"]
-        DAPP["Driver App"]
+    CICD["⚙️ CI/CD\nGitHub Actions · Terraform · Artifact Registry"]
+
+    USERS -->|HTTPS| ING
+    ING -->|masked request| APP
+    APP <--> DATA
+    APP -->|LLM calls| LLM
+    APP -->|live data| BIZ
+    APP <-->|fallback tunnel| VLLM
+    APP -.->|logs| LOG
+    APP -.->|metrics| MON
+    APP -->|traces| OBS
+    MON -->|alerts| OBS
+    CICD -->|deploy| GKE
+```
+
+---
+
+### 5.3 Diagram 2 — Request lifecycle (happy path)
+
+```mermaid
+flowchart LR
+    U(["👤 CS Agent"])
+
+    subgraph ING["Ingress Namespace"]
+        CA["Cloud Armor\nWAF · rate-limit"]
+        NG["Nginx Ingress\nTLS 1.3"]
+        KC["Keycloak\nJWT + RBAC"]
+        PII["PII Scrubber\npseudonymise\nname/phone/addr"]
     end
 
-    subgraph EXT_OBS["🔭 Observability & Alerting  (external SaaS)"]
-        LF["Langfuse\ntraces · RAGAS evals · cost tracking\nprompt version management"]
-        PD["PagerDuty\nP1 on-call"]
-        SLACK["Slack  #ops-alerts\nP2"]
+    subgraph APP["Application Namespace"]
+        ORCH["Agent Orchestrator\nLangGraph ReAct"]
+        CLF["Query Classifier\nHaiku 4.5 · ~200 tok"]
+        CACHE["Semantic Cache\nRedis · cosine ≥ 0.92"]
+        ADPT["Integration Adapter\nTMS · OMS · Freshdesk"]
+        LLMP["LiteLLM Proxy"]
+        PG[("PostgreSQL\nAudit Trail")]
     end
 
-    %% ── Request path ──────────────────────────────────────────────────
-    CS & DISP & SUP -->|"HTTPS request"| CA
-    CA --> NGINX --> KEYCLOAK --> PIISVC
-    PIISVC -->|"masked request + JWT"| ORCH
+    QDRANT[("Qdrant\nVector DB")]
 
-    %% ── Orchestrator core ─────────────────────────────────────────────
-    ORCH --> CLF
-    CLF -->|"check semantic cache"| RCACHE
-    RCACHE -->|"cache HIT  (~65% of status queries)"| ORCH
-    CLF -->|"cache MISS  →  fetch live data"| ADPT
-    ADPT -->|"tool result"| ORCH
-    ORCH -->|"SOP / runbook lookup"| QDRANT
-    QDRANT -->|"top-k context chunks"| ORCH
-    ORCH -->|"LLM call  (masked payload)"| LITELLM
-    ORCH -->|"confidence < 0.7"| HRQ
-    ORCH -->|"write audit record"| PG
+    U -->|1 HTTPS| CA --> NG --> KC --> PII
+    PII -->|2 masked request| ORCH
+    ORCH -->|3 classify| CLF
+    CLF -->|4a cache check| CACHE
+    CACHE -->|"4b HIT (~65%)"| ORCH
+    CLF -->|4c cache MISS| ADPT
+    ADPT -->|5 live data| ORCH
+    ORCH -->|6 SOP lookup| QDRANT --> ORCH
+    ORCH -->|7 LLM call| LLMP
+    LLMP -->|8 response| ORCH
+    ORCH -->|9 write audit| PG
+    ORCH -->|10 restore PII\nreturn response| U
+```
 
-    %% ── LiteLLM routing ───────────────────────────────────────────────
-    LITELLM -->|"simple 65%  →  Haiku 4.5\nSOP 30%    →  Sonnet 4.6\nhard 5%    →  Opus 4.7"| CLAUDE
-    LITELLM -->|"secondary fallback\n(provider outage)"| OAI
-    LITELLM -->|"tertiary fallback\n(dual-cloud outage)"| VPNGW
+---
 
-    %% ── On-prem ───────────────────────────────────────────────────────
-    VPNGW <-->|"encrypted HA tunnel"| VLLM
+### 5.4 Diagram 3 — LLM routing & fallback chain
 
-    %% ── Integration ───────────────────────────────────────────────────
+```mermaid
+flowchart TD
+    LLMP["LiteLLM Proxy"]
+
+    subgraph ROUTING["Routing logic  (by query class)"]
+        R1["status_lookup · simple\n~65% of traffic"]
+        R2["sop_question · moderate\n~30% of traffic"]
+        R3["complex · escalation\n~5% of traffic"]
+    end
+
+    subgraph PRIMARY["Anthropic  (primary)"]
+        H["Haiku 4.5\n$1 / $5 per 1M tok"]
+        S["Sonnet 4.6\n$3 / $15 per 1M tok"]
+        O["Opus 4.7\n$15 / $75 per 1M tok"]
+    end
+
+    FB1["OpenAI GPT-4o-mini\n(secondary fallback)\nprovider outage"]
+    FB2["on-prem vLLM\nLlama 3.1 8B INT4\n(tertiary fallback)\ndual-cloud outage"]
+
+    subgraph CB["Circuit Breaker  OPEN  (all providers down)"]
+        direction LR
+        RB["Rule-based FAQ\nstatus from Redis cache"]
+        TK["Auto-ticket in Freshdesk\n+ user message:\n'CS sẽ phản hồi trong 10 phút'"]
+        PD["PagerDuty P1\nalert fired"]
+    end
+
+    LLMP --> ROUTING
+    R1 --> H
+    R2 --> S
+    R3 --> O
+
+    H & S & O -->|"5xx or p95 > 8 s\nretry × 2 jitter"| FB1
+    FB1 -->|"still failing"| FB2
+    FB2 -->|"VPN down\nor unreachable"| CB
+```
+
+---
+
+### 5.5 Diagram 4 — Data layer & external integrations
+
+```mermaid
+flowchart LR
+    ORCH["Agent Orchestrator"]
+    HRQ["Human Review Queue\nRedis Streams\nconfidence < 0.7"]
+
+    subgraph DATA["Data Namespace"]
+        QDRANT[("Qdrant\nVector DB\nSOP embeddings\ntext-embed-3-small")]
+        PG[("PostgreSQL 16\nAudit Trail · Sessions\nappend-only role")]
+        REDIS[("Redis 7\n3-node cluster\ncache · streams · pub/sub")]
+    end
+
+    subgraph BIZ["🔗 Business Systems"]
+        TMS["TMS\norder · tracking"]
+        OMS["SAP OMS\nstock · routing"]
+        FD["Freshdesk\nticket state"]
+        DAPP["Driver App\nwebhook events"]
+    end
+
+    ADPT["Integration Adapter\nREST wrappers"]
+
+    ORCH -->|SOP lookup| QDRANT
+    QDRANT -->|top-k chunks| ORCH
+    ORCH -->|write audit| PG
+    ORCH -->|low confidence| HRQ
+    HRQ -->|supervisor approval| FD
+    HRQ -.->|backed by| REDIS
+
+    ORCH --> ADPT
     ADPT --> TMS & OMS & FD & DAPP
-    HRQ -->|"supervisor approval flow"| FD
+    TMS & OMS & FD & DAPP -->|live data| ADPT
+    ADPT -->|tool result| ORCH
+```
 
-    %% ── Data layer ────────────────────────────────────────────────────
-    RCACHE -.->|"backed by"| REDISDB
-    HRQ    -.->|"backed by"| REDISDB
+---
 
-    %% ── Logging pipeline ──────────────────────────────────────────────
-    ORCH    -.->|"stdout logs"| FB
-    LITELLM -.->|"stdout logs"| FB
-    PIISVC  -.->|"scrub-audit logs"| FB
+### 5.6 Diagram 5 — Observability & CI/CD
+
+```mermaid
+flowchart TB
+    subgraph PODS["Application pods  (emit telemetry)"]
+        direction LR
+        ORCH["Orchestrator"]
+        LLMP["LiteLLM Proxy"]
+        PII["PII Scrubber"]
+    end
+
+    subgraph LOG["Logging Namespace  (ELK)"]
+        FB["Filebeat\nDaemonSet"]
+        LS["Logstash\nparse · filter · PII mask"]
+        ES[("Elasticsearch\n3-node\n30d hot · 90d warm")]
+        KB["Kibana\nOps Dashboards"]
+    end
+
+    subgraph MON["Monitoring Namespace"]
+        PROM["Prometheus\nscrape /metrics 15 s"]
+        GRAF["Grafana\nSLO · cost-per-query\ncache hit rate"]
+        AM["Alertmanager"]
+    end
+
+    subgraph ALERT["Alerting"]
+        PD["PagerDuty\nP1 · p95 > 5 s\nprovider failover"]
+        SLACK["Slack #ops-alerts\nP2 · cache hit < 40%\nerror rate > 1%"]
+    end
+
+    LF["Langfuse\ntraces · RAGAS evals\ncost tracking · prompt versions"]
+
+    subgraph CICD["⚙️ CI/CD Pipeline"]
+        DEV["Developer"] -->|commit| GH["GitHub"]
+        GH -->|trigger| GHA["GitHub Actions"]
+        GHA -->|push image| AR["Artifact Registry\nGCP"]
+        TF["Terraform IaC"] -->|provision| INFRA["GKE · VPC\nCloud VPN · Secret Manager"]
+        AR -->|Helm rolling deploy| DEPLOY["GKE namespaces"]
+    end
+
+    ORCH & LLMP & PII -.->|stdout logs| FB
     FB --> LS --> ES --> KB
 
-    %% ── Metrics pipeline ──────────────────────────────────────────────
-    ORCH    -.->|"/metrics"| PROM
-    LITELLM -.->|"/metrics"| PROM
-    RCACHE  -.->|"/metrics"| PROM
+    ORCH & LLMP -.->|/metrics| PROM
     PROM --> GRAF
     PROM --> AM
-    AM -->|"P1  ·  p95 > 5 s  ·  provider failover"| PD
-    AM -->|"P2  ·  cache hit < 40%  ·  error rate > 1%"| SLACK
+    AM --> PD & SLACK
 
-    %% ── Observability ─────────────────────────────────────────────────
-    LITELLM -->|"traces + token cost"| LF
-    ORCH    -->|"session traces + RAGAS trigger"| LF
+    LLMP & ORCH -->|traces + token cost| LF
 ```
 
 ---
