@@ -10,7 +10,7 @@
 3. [Scenario Selection & Rationale](#3-scenario-selection--rationale)
 4. [Enterprise Context & Constraints](#4-enterprise-context--constraints)
 5. [Deployment Architecture](#5-deployment-architecture)
-6. [System Components](#6-system-components)
+6. [System Components](#6-system-components) — catalogue · namespaces · security checklist
 7. [Request Lifecycle](#7-request-lifecycle)
 8. [Cost Analysis](#8-cost-analysis)
 9. [Cost Optimization Strategies](#9-cost-optimization-strategies)
@@ -299,6 +299,25 @@ flowchart TD
 | `ns-logging` | Filebeat DaemonSet, Logstash, Elasticsearch, Kibana | Centralised log pipeline |
 | `ns-monitoring` | Prometheus, Grafana, Alertmanager | Metrics and alerting |
 
+### 6.3 Security & compliance checklist
+
+| # | Control | Status | Notes |
+|---|---|---|---|
+| 1 | PII pseudonymised before any cloud LLM call | ✅ Done | PDPA Nghị định 13/2023/NĐ-CP Article 26 data minimisation; regex + NER in PII Scrubber service |
+| 2 | All API keys in Google Secret Manager | ✅ Done | Never in code, env vars, or Docker images; rotated quarterly |
+| 3 | VPC private nodes — no public IPs on GKE workload nodes | ✅ Done | Cloud NAT for outbound; ingress via Cloud Load Balancer only |
+| 4 | Cloud Armor WAF with OWASP top-10 ruleset | ✅ Done | Rate-limit by IP; geo-restriction to VN + SG if required |
+| 5 | Audit trail append-only in PostgreSQL | ✅ Done | DB role with INSERT only — no UPDATE/DELETE granted |
+| 6 | Encryption at rest | ✅ Done | GCP default CMEK on GKE persistent volumes + Cloud SQL |
+| 7 | Encryption in transit | ✅ Done | TLS 1.3 on all external traffic; mTLS between cluster services (Istio sidecar) |
+| 8 | RBAC roles enforced via Keycloak | ✅ Done | CS agents: read-only; dispatch: approve tickets; supervisors: override model responses |
+| 9 | Data residency | ✅ Done | GKE in asia-southeast1 (Singapore); on-prem in Hanoi; no data written outside ASEAN |
+| 10 | PDPA DPA signed with Google Cloud | ⬜ Pre-launch | Data Processing Agreement required before production go-live |
+| 11 | Penetration test on PII Scrubber | ⬜ Pre-launch | Specifically test bypass attempts on pseudonymisation before production launch |
+| 12 | Llama 3.1 8B model licence review | ⬜ Pre-launch | Confirm Meta Llama 3.1 Community Licence permits internal B2B SaaS use |
+
+**Critical path items before go-live:** items 10, 11, 12 must be cleared. Items 10 and 11 block production launch; item 12 blocks on-prem vLLM use in any customer-facing fallback path.
+
 ---
 
 ## 7. Request Lifecycle
@@ -332,9 +351,9 @@ flowchart TD
 | Auth + PII scrub | ~80ms |
 | Query classification (Haiku) | ~200ms |
 | Qdrant top-k retrieval | ~50ms |
-| Sonnet LLM call (TTFT + generation) | ~900ms |
+| Sonnet LLM call (TTFT + generation) | ~1,500ms |
 | PII re-injection + response assembly | ~30ms |
-| **Total p50** | **~1.26s** |
+| **Total p50** | **~1.86s** |
 | **p95 target** | **≤ 5s** |
 
 ---
@@ -345,13 +364,15 @@ flowchart TD
 
 ### 8.1 Traffic profile
 
-| Metric | MVP | Growth (5×) | Peak (rush-hour) |
+| Metric | MVP | Growth (5×) | Notes |
 |---|---|---|---|
-| Active users/day | 85 | 425 | — |
-| Sessions/day | ~500 | ~2,500 | — |
-| Requests/day | **800** | **4,000** | — |
-| Requests/hour avg | ~33 | ~167 | — |
-| Peak factor | **4×** | **4×** | 08–10h · 16–19h |
+| Active users/day | 85 | 425 | CS 40 · Dispatch 30 · Supervisor 15 |
+| Sessions/day | ~500 | ~2,500 | ~6 sessions/user/day |
+| Requests/day | **800** | **4,000** | ~1.5 req/session |
+| Requests/hour (avg) | **~33** | **~167** | 800 / 24h |
+| Requests/hour (peak 4×) | **~133** | **~667** | Rush hours 08–10h · 16–19h |
+| Requests/hour (spike 10×) | **~330** | — | Flash-sale burst; ~4 req/h per user |
+| Peak factor | **4×** normal avg | **4×** normal avg | Sustained for ~2h windows |
 
 ### 8.2 Token profile per request class
 
@@ -436,12 +457,12 @@ flowchart TD
 | On-prem vLLM capex (A100 $15K / 3yr amortised) | $417 |
 | On-prem ops labour (½ day/month sysadmin) | $100 |
 | LLM retries (1.3× on ~2% failure rate) | $4 |
-| Eval pipeline (RAGAS weekly, ~$4/run × 4) | $16 |
+| Eval pipeline (RAGAS + LLM-as-Judge + online sampling, see §11.5) | $43 |
 | GKE egress to on-prem DC | $15 |
 | Incident response (~2h/month × $30/h) | $60 |
-| **Total hidden** | **~$612** |
+| **Total hidden** | **~$639** |
 
-> Raw total $654 + $612 hidden = **$1,112/month** (validates 1.7× multiplier)
+> Raw total $654 + $639 hidden = **~$1,293/month** (1.98× multiplier — rounds to 2× for months 1–3 as noted in §8.9; 1.7× is the steady-state estimate once ops stabilises)
 
 ### 8.7 Total cost summary
 
@@ -453,7 +474,7 @@ flowchart TD
 | Observability | $130 | $320 | **Super-linear** — log volume grows faster than traffic |
 | Human review | $68 | $250 | **Super-linear** — more tickets, more hours |
 | Raw total | $654 | $1,925 | |
-| × hidden cost multiplier | **$1,112** | **$3,273** | |
+| + hidden costs | **~$1,293** (1.98×, months 1–3) | **~$3,500** | Stabilises to ~1.7× after ops ramp-up |
 
 ### 8.8 Cost driver ranking (MVP)
 
@@ -557,13 +578,13 @@ flowchart TD
 
 ### 10.1 Failure scenario matrix
 
-#### Scenario A — Traffic spike 10× (330 req/h sustained 30 min)
+#### Scenario A — Traffic spike 10× (330 req/h for ~15–30 min)
 
 | Dimension | Detail |
 |---|---|
-| Trigger | Flash sale at 16:00; all 85 CS agents open agent simultaneously |
-| User impact | p95 climbs from ~2s to ~12s; some requests timeout |
-| Short-term (< 5 min) | HPA scales 3→10 pods (~90s). Redis queue absorbs burst — users see "đang xử lý" instead of 5xx. LiteLLM rate-limits at 200 req/min to Claude API to prevent 429s. |
+| Trigger | Flash sale announcement at 16:00; all 85 CS agents open agent simultaneously — each making ~4 req/h, collectively 10× the 33/h daily average |
+| User impact | p95 climbs from ~2s to ~8s; some requests queue; no hard 5xx unless queue overflows |
+| Short-term (< 5 min) | HPA scales 3→10 pods (~90s). Redis queue absorbs burst — users see "đang xử lý" instead of 5xx. LiteLLM rate-limits at 10 req/min to Claude API to prevent 429s. |
 | Long-term fix | CronJob pre-scale: HPA min replicas set to 7 at 07:45 and 15:45 daily. TMS webhook triggers pre-scale if shipment volume spikes > 2× in 30 min. |
 | Load shedding policy | Queue depth > 500: drop non-urgent SOP queries (return "please retry in 2 min"), keep status-lookup and ticket-action classes live. |
 | Metrics to watch | GKE pod count · Redis queue depth · Nginx active connections · p95 latency · Claude API 429 rate |
@@ -644,8 +665,8 @@ INVARIANT: PII scrubber is NEVER bypassed at any step of the fallback chain.
 |---|---|---|---|
 | Horizontal pod autoscale | GKE HPA | CPU > 65% or queue depth > 100 | Scale orchestrator pods 3→10 |
 | Pre-scale schedule | Kubernetes CronJob | 07:45 and 15:45 daily | Set HPA min replicas = 7 |
-| Request queue | Redis Streams | Burst > 200 req/min | Buffer requests FIFO with backpressure |
-| Rate limiting | LiteLLM Proxy | > 200 req/min to Claude API | Hold in queue, return 202 Accepted |
+| Request queue | Redis Streams | Burst > 10 req/min (~600/h) | Buffer requests FIFO with backpressure |
+| Rate limiting | LiteLLM Proxy | > 10 req/min to Claude API | Hold in queue, return 202 Accepted |
 | Load shedding | Nginx | Queue depth > 500 | Drop SOP class (503), keep status + ticket |
 | Cache TTL extension | Redis | Circuit breaker OPEN | Extend status cache TTL 60s → 5min (stale-ok) |
 
@@ -717,7 +738,7 @@ Threshold: weekly average < 3.5 → flag to supervisor. Two consecutive weeks < 
 | Safety suite (50 adversarial) | ~$8 | Monthly | $8 |
 | **Total** | | | **~$43/month** |
 
-> Already included in the hidden-cost multiplier (§8.6).
+> Fully reflected in §8.6 hidden costs. This is the line item most teams forget to budget.
 
 ---
 
