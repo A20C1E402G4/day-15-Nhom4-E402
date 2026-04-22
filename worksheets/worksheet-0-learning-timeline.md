@@ -11,6 +11,8 @@
 
 ## Topic lock
 
+Logistics Operations Agent — an AI copilot for a Vietnamese mid-size 3PL (third-party logistics) company. It helps dispatch staff and CS agents handle three things in real time: (1) order/shipment status lookups, (2) customer ticket drafting and triage, and (3) SOP/procedure Q&A. Traffic is bursty (3–5× during rush hours), queries split cleanly into cheap repetitive lookups vs. rare complex reasoning, and every order carries PII — which is why the plan lands on a Hybrid deployment with edge PII scrubbing, semantic caching for status lookups, Haiku→Sonnet→Opus routing, and an on-prem vLLM fallback.
+
 - **Source:** ☐ Phase 1 product   ☒ **Scenario card**
 - **Card chosen:** **Scenario 5 — Logistics Operations Agent**
 - **Why this card:** cost + reliability + cache + fallback tension is rich → matches rubric priorities (cost 20, reliability 15, architecture 20).
