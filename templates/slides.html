@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<title>Nhóm 4 · E402 · Logistics Operations Agent</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+/* ── tokens ───────────────────────────────────────────── */
+:root {
+  --bg:      #0b1020;
+  --fg:      #e8ecf8;
+  --muted:   #98a2c3;
+  --accent:  #7aa2ff;
+  --accent2: #4ad7a4;
+  --warn:    #ffb86b;
+  --danger:  #ff7b7b;
+  --card:    #141a33;
+  --border:  #242c4d;
+}
+* { box-sizing: border-box; }
+
+/* ── base ─────────────────────────────────────────────── */
+html, body {
+  margin: 0; padding: 0;
+  width: 100vw; height: 100vh;
+  overflow: hidden;
+  background: var(--bg); color: var(--fg);
+  font-family: -apple-system,"Inter","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+
+/* ── stage ────────────────────────────────────────────── */
+#stage {
+  position: relative;
+  width: 100%; height: 100%;
+  transition: height .25s ease;
+}
+body.notes-on #stage { height: 65%; }
+
+/* ── slides ───────────────────────────────────────────── */
+section.slide {
+  position: absolute; inset: 0;
+  padding: 44px 60px;
+  background: linear-gradient(160deg,#141a33 0%,#0e1430 100%);
+  display: none; flex-direction: column; gap: 16px;
+  opacity: 0; transition: opacity .2s ease;
+}
+section.slide.active { display: flex; opacity: 1; }
+
+/* ── slide header ─────────────────────────────────────── */
+section.slide header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  border-bottom: 1px solid var(--border); padding-bottom: 10px;
+  flex-shrink: 0;
+}
+.tag  { color: var(--muted); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+.pag  { color: var(--muted); font-size: 12px; }
+
+/* ── typography ───────────────────────────────────────── */
+h1 { font-size: 34px; margin: 0; line-height: 1.15; }
+h2 { font-size: 26px; margin: 0 0 6px; color: var(--accent); }
+h3 { font-size: 16px; margin: 0 0 4px; color: var(--accent2); }
+p  { margin: 0; line-height: 1.5; font-size: 15px; }
+ul { margin: 0; padding-left: 18px; line-height: 1.65; font-size: 15px; }
+li + li { margin-top: 3px; }
+b  { color: #d0d8f8; }
+
+/* ── layout helpers ───────────────────────────────────── */
+.grow  { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; }
+.row   { display: grid; grid-template-columns: 1fr 1fr;     gap: 16px; flex: 1; min-height: 0; }
+.row3  { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; flex: 1; min-height: 0; }
+.row4  { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; flex: 1; min-height: 0; }
+.col   { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+
+/* ── card ─────────────────────────────────────────────── */
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 6px;
+  overflow: hidden;
+}
+.card.accent  { border-color: rgba(122,162,255,.4); }
+.card.accent2 { border-color: rgba(74,215,164,.4); }
+.card.warn    { border-color: rgba(255,184,107,.4); }
+
+/* ── metric ───────────────────────────────────────────── */
+.metric { font-size: 38px; font-weight: 700; color: var(--accent); line-height: 1; }
+.metric small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); margin-top: 4px; }
+.metric.ok   { color: var(--accent2); }
+.metric.warn { color: var(--warn); }
+
+/* ── table ────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th,td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--border); }
+th    { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+td.ok   { color: var(--accent2); }
+td.warn { color: var(--warn); }
+
+/* ── pill ─────────────────────────────────────────────── */
+.pill {
+  display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px;
+  background: rgba(122,162,255,.12); color: var(--accent); border: 1px solid rgba(122,162,255,.3);
+}
+.pill.ok   { background: rgba(74,215,164,.12); color: var(--accent2); border-color: rgba(74,215,164,.3); }
+.pill.warn { background: rgba(255,184,107,.12); color: var(--warn);   border-color: rgba(255,184,107,.3); }
+.pill.red  { background: rgba(255,123,123,.12); color: var(--danger); border-color: rgba(255,123,123,.3); }
+
+/* ── pre / code ───────────────────────────────────────── */
+pre {
+  background: #080c1d; border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 14px; font-size: 12.5px; overflow: auto; flex-shrink: 0; margin: 0;
+  font-family: "JetBrains Mono","SF Mono",Menlo,Consolas,monospace;
+  white-space: pre; color: var(--muted); line-height: 1.4;
+}
+code { font-family: "JetBrains Mono","SF Mono",Menlo,Consolas,monospace; font-size: 12.5px;
+       background: rgba(255,255,255,.06); padding: 2px 5px; border-radius: 4px; }
+
+/* ── footer ───────────────────────────────────────────── */
+footer.meta {
+  color: var(--muted); font-size: 12px;
+  display: flex; justify-content: space-between; flex-shrink: 0;
+}
+
+/* ── divider label ────────────────────────────────────── */
+.section-label {
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); border-left: 3px solid var(--accent); padding-left: 8px;
+  flex-shrink: 0;
+}
+
+/* ── progress bar ─────────────────────────────────────── */
+#progress {
+  position: fixed; bottom: 0; left: 0; height: 3px;
+  background: var(--accent); transition: width .25s ease; z-index: 20;
+}
+
+/* ── nav hint ─────────────────────────────────────────── */
+#hint {
+  position: fixed; bottom: 10px; right: 16px; z-index: 20;
+  color: transparent; font-size: 11px; letter-spacing: .06em;
+  pointer-events: none; transition: color .3s;
+}
+#hint.show { color: var(--muted); }
+
+/* ── click zones ──────────────────────────────────────── */
+.nav-zone { position: fixed; top: 0; bottom: 0; width: 12%; cursor: pointer; z-index: 10; }
+#nav-prev { left: 0; }
+#nav-next { right: 0; }
+
+/* ── speaker notes panel ──────────────────────────────── */
+#notes-panel {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  height: 35%; background: #060c1c; border-top: 2px solid var(--border);
+  display: none; flex-direction: column; z-index: 30; padding: 0;
+}
+body.notes-on #notes-panel { display: flex; }
+
+#notes-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+}
+#notes-header span.ind { color: var(--accent); }
+
+#notes-body {
+  flex: 1; overflow-y: auto; padding: 14px 20px;
+  font-size: 14px; line-height: 1.65; color: #c8d0e8;
+}
+#notes-body p { margin: 0 0 10px; }
+#notes-body strong { color: var(--accent2); }
+
+.notes { display: none; } /* hidden in the slide DOM */
+
+/* ── print ────────────────────────────────────────────── */
+@media print {
+  html,body { width:auto; height:auto; overflow:visible; background:white; color:black; }
+  #stage { height: auto !important; }
+  #progress,#hint,.nav-zone,#notes-panel { display:none !important; }
+  section.slide {
+    position:static; display:flex !important; opacity:1 !important;
+    width:100%; aspect-ratio:16/9; padding:44px 60px;
+    page-break-after:always; background:white; color:black;
+    border:1px solid #d6dcea; border-radius:12px; margin-bottom:8px;
+  }
+  h2 { color:#1a4fd6 !important; }
+  h3 { color:#0d7a53 !important; }
+  .card { background:#f4f6fb !important; border-color:#d6dcea !important; }
+  .metric { color:#1a4fd6 !important; }
+}
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+<div id="hint">← → &nbsp;·&nbsp; S notes</div>
+<div class="nav-zone" id="nav-prev"></div>
+<div class="nav-zone" id="nav-next"></div>
+
+<div id="stage">
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 1 — Title & Problem
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <header>
+    <span class="tag">AICB-P1 · Ngày 15 · Enterprise Readiness Review</span>
+    <span class="pag">1 / 9</span>
+  </header>
+  <div class="grow" style="justify-content:center; gap:20px;">
+    <div>
+      <h1>Logistics Operations Agent</h1>
+      <h1 style="color:var(--accent2);">Enterprise Readiness Review</h1>
+    </div>
+    <p style="color:var(--muted);font-size:17px;">
+      AI copilot cho đội CS &amp; điều phối của một 3PL mid-size tại Việt Nam —
+      từ MVP demo đến hệ thống production thật sự.
+    </p>
+    <div class="row3">
+      <div class="card accent2">
+        <h3>Người dùng</h3>
+        <p><b>85 users</b><br/>CS agents · Dispatch · Ops supervisors</p>
+      </div>
+      <div class="card accent">
+        <h3>3 use cases</h3>
+        <p>Tra cứu trạng thái đơn · Soạn &amp; triage ticket · Tra cứu SOP</p>
+      </div>
+      <div class="card warn">
+        <h3>Nếu sai / chậm</h3>
+        <p>Sai status → khiếu nại · CS chậm → SLA miss + bồi thường</p>
+      </div>
+    </div>
+  </div>
+  <footer class="meta">
+    <span>Nhóm 4 · Zone E402 · 2026-04-22</span>
+    <span>Duy Anh · Huy Hoàng · Nhật Vĩ · Thanh Phong</span>
+  </footer>
+  <div class="notes">
+    <p>Chúng tôi là Nhóm 4. Hôm nay trình bày Enterprise Readiness Review cho Logistics Operations Agent — AI copilot cho đội CS và điều phối của một 3PL mid-size tại Việt Nam.</p>
+    <p>Bài toán thực tế: 85 nhân viên, ~800 yêu cầu mỗi ngày — hỏi trạng thái đơn, soạn ticket, tra SOP. Giờ cao điểm 8–10h và 16–19h load tăng 4 lần. Câu trả lời sai hoặc chậm → khiếu nại, SLA miss. <strong>Đây không phải MVP demo — đây là production.</strong></p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 2 — Enterprise Context
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <header><span class="tag">Enterprise Context</span><span class="pag">2 / 9</span></header>
+  <h2>5 ràng buộc enterprise — không phải startup</h2>
+  <div class="row" style="flex:1;">
+    <div class="col">
+      <div class="card warn">
+        <h3><span class="pill warn">1 · PDPA</span></h3>
+        <p>Mọi đơn hàng chứa PII người nhận. Không được rời VN dưới dạng raw — phải pseudonymise trước khi gọi bất kỳ cloud LLM nào.</p>
+      </div>
+      <div class="card">
+        <h3><span class="pill">2 · Multi-system integration</span></h3>
+        <p>Real-time read vào TMS · SAP OMS · Freshdesk · Driver App. Không có unified API — cần integration adapter layer.</p>
+      </div>
+      <div class="card">
+        <h3><span class="pill">3 · Peak-hour SLA</span></h3>
+        <p>p95 ≤ 5s theo hợp đồng. Load tăng 4× lúc 8–10h &amp; 16–19h. ~50 000 shipments/ngày.</p>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <h3><span class="pill">4 · Audit trail</span></h3>
+        <p>Mỗi câu trả lời AI gửi khách cần log: prompt hash · model version · human-approval flag · outcome. Bắt buộc cho PDPA accountability &amp; dispute resolution.</p>
+      </div>
+      <div class="card warn">
+        <h3><span class="pill warn">5 · Graceful degradation</span></h3>
+        <p>Nếu Claude API down, hệ thống <b>không được</b> trả về lỗi. Phải tự xử lý — serve từ cache, fallback model, hoặc auto-ticket.</p>
+      </div>
+      <div class="card" style="background:rgba(122,162,255,.06);">
+        <h3>Data sensitivity</h3>
+        <table>
+          <tr><th>Data class</th><th>Sensitivity</th><th>Cross-border?</th></tr>
+          <tr><td>Recipient PII</td><td class="warn">High</td><td class="warn">No</td></tr>
+          <tr><td>Order status</td><td>Medium</td><td class="ok">Yes (masked)</td></tr>
+          <tr><td>SOPs / runbooks</td><td>Low</td><td class="ok">Yes</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <p>5 ràng buộc — mỗi cái drive trực tiếp vào kiến trúc.</p>
+    <p><strong>PDPA</strong>: PII không được gọi thẳng Claude API. <strong>Multi-system</strong>: phải kết nối 4 hệ thống khác nhau real-time. <strong>SLA</strong>: p95 ≤ 5s ngay cả giờ cao điểm. <strong>Audit</strong>: mọi AI response phải traceable. <strong>Degradation</strong>: không được để CS agent thấy lỗi khi provider down.</p>
+    <p>Tất cả 5 ràng buộc này đặt ra câu hỏi: Cloud, On-prem, hay Hybrid?</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 3 — Deployment Architecture
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <header><span class="tag">Architecture</span><span class="pag">3 / 9</span></header>
+  <h2>Hybrid trên GKE — vì 2 lý do cụ thể</h2>
+  <div class="row">
+    <div class="col">
+      <div class="card" style="flex-shrink:0;">
+        <table>
+          <tr><th></th><th>Cloud only</th><th>On-prem</th><th>Hybrid ✓</th></tr>
+          <tr><td>PII control</td><td class="warn">Low</td><td class="ok">Highest</td><td class="ok">Tunable</td></tr>
+          <tr><td>Time to deploy</td><td class="ok">Days</td><td class="warn">3–6 months</td><td>3–4 weeks</td></tr>
+          <tr><td>Cost model</td><td>Per-token</td><td>Capex+GPU</td><td>Mixed</td></tr>
+          <tr><td>Fallback</td><td class="warn">None</td><td class="ok">Owned</td><td class="ok">On-prem DC</td></tr>
+        </table>
+      </div>
+      <div class="card accent2">
+        <h3>Reason 1 — PII control không mất model quality</h3>
+        <p>PII Scrubber service đặt in-VN, ở edge cluster. Tên/SĐT/địa chỉ pseudonymised trước khi rời cluster. PDPA satisfied — Claude vẫn nhận full context, chỉ là masked.</p>
+      </div>
+      <div class="card accent">
+        <h3>Reason 2 — Cost &amp; reliability tách biệt theo query class</h3>
+        <p>65% yêu cầu là status lookup lặp lại → Redis semantic cache → 0 LLM cost. Chỉ novel queries hit cloud LLM. On-prem vLLM (Hanoi DC) làm fallback.</p>
+      </div>
+    </div>
+    <pre style="flex:1; font-size:12px;">
+Platform: GKE Autopilot · asia-southeast1 (Singapore)
+
+[CS / Dispatch] ──HTTPS──► Cloud Armor · Nginx · Keycloak
+                                        │
+                              PII Scrubber (in-VN)
+                              pseudonymise name/phone/addr
+                                        │ masked request
+                            ┌───────────▼───────────────┐
+                            │   Agent Orchestrator       │
+                            │   FastAPI + LangGraph      │
+                            └──┬──────┬──────┬──────┬───┘
+                               │      │      │      │
+                           Cache   Adapter  LLM  Human
+                           Redis   TMS/OMS  Proxy Review
+                           cosine  Freshdesk      Queue
+                           ≥0.92   Driver
+                                        │
+                        ┌──────────────┼────────────────┐
+                        ▼              ▼                 ▼
+                   Haiku 4.5      Sonnet 4.6         Opus 4.7
+                    (65%)          (30%)               (5%)
+                        └──────────────┼────────────────┘
+                         fallback ──► GPT-4o-mini
+                                  ──► on-prem vLLM (Hanoi)
+    </pre>
+  </div>
+  <div class="notes">
+    <p><strong>Platform: GKE Autopilot ở Singapore.</strong> Lý do: ASEAN data residency, PII masking trước khi egress, autoscale không cần quản lý node.</p>
+    <p><strong>Reason 1</strong>: PII Scrubber ở edge — PDPA satisfied, Claude vẫn nhận đủ context. <strong>Reason 2</strong>: 65% queries là status lookup lặp lại, Redis cache → 0 LLM cost. On-prem A100 ở Hà Nội làm tertiary fallback qua Cloud VPN HA.</p>
+    <p>5 namespace trong cluster: Ingress · Application · Data · Logging (ELK) · Monitoring (Prometheus). Observability qua Langfuse.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 4 — System Components
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <header><span class="tag">Architecture · Components</span><span class="pag">4 / 9</span></header>
+  <h2>Component catalogue — mỗi layer có mục đích rõ</h2>
+  <div class="row">
+    <table style="font-size:13px;">
+      <tr><th>Layer</th><th>Tool</th><th>Role</th></tr>
+      <tr><td>WAF</td><td>Cloud Armor</td><td>DDoS · rate-limit · IP allowlist</td></tr>
+      <tr><td>Ingress</td><td>Nginx + Keycloak</td><td>TLS 1.3 · JWT + RBAC</td></tr>
+      <tr><td>PII safety</td><td>Custom FastAPI</td><td>Regex + NER pseudonymisation</td></tr>
+      <tr><td>Orchestrator</td><td>FastAPI + LangGraph</td><td>ReAct loop · audit writer · HPA 3→10</td></tr>
+      <tr><td>LLM proxy</td><td>LiteLLM</td><td>Routing · retry · circuit-breaker</td></tr>
+      <tr><td>Semantic cache</td><td>Redis 7</td><td>cosine ≥ 0.92 · TTL 60s/5min</td></tr>
+      <tr><td>Vector DB</td><td>Qdrant</td><td>SOP embeddings · text-embed-3-small</td></tr>
+      <tr><td>Audit DB</td><td>PostgreSQL 16</td><td>Append-only audit trail + sessions</td></tr>
+      <tr><td>Fallback LLM</td><td>vLLM · Llama 3.1 8B INT4</td><td>On-prem Hanoi · 1× A100 40GB</td></tr>
+    </table>
+    <div class="col">
+      <div class="card" style="flex-shrink:0;">
+        <h3>Observability stack</h3>
+        <table style="font-size:13px;">
+          <tr><th>Stack</th><th>Tool</th></tr>
+          <tr><td>Logging</td><td>Filebeat → Logstash → Elasticsearch → Kibana</td></tr>
+          <tr><td>Metrics</td><td>Prometheus → Grafana · Alertmanager</td></tr>
+          <tr><td>Tracing</td><td>Langfuse (traces + RAGAS + cost)</td></tr>
+          <tr><td>Alerts</td><td>PagerDuty P1 · Slack #ops-alerts P2</td></tr>
+        </table>
+      </div>
+      <div class="card" style="flex-shrink:0;">
+        <h3>CI/CD</h3>
+        <table style="font-size:13px;">
+          <tr><th>Step</th><th>Tool</th></tr>
+          <tr><td>Source</td><td>GitHub → GitHub Actions</td></tr>
+          <tr><td>Image</td><td>Artifact Registry (GCP)</td></tr>
+          <tr><td>Deploy</td><td>Helm rolling deploy → GKE</td></tr>
+          <tr><td>IaC</td><td>Terraform (GKE · VPC · VPN · Secrets)</td></tr>
+        </table>
+      </div>
+      <div class="card warn">
+        <h3>On-prem → Cloud VPN HA</h3>
+        <p>2 tunnels · $72/mo fixed · 99.99% SLA. Kết nối Hanoi DC với GKE cluster. <b>Always-on cost</b> — ngay cả khi fallback không được dùng.</p>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <p>Đây là component catalogue đầy đủ. Điểm quan trọng cần nhấn khi trình bày: <strong>Cloud VPN HA $72/mo là always-on</strong> — đây là hidden cost điển hình trong hybrid architecture mà nhiều team bỏ qua.</p>
+    <p>LiteLLM Proxy là điểm trung tâm — routing, retry, circuit-breaker đều ở đây. Nếu reviewer hỏi "tại sao không dùng thẳng Claude SDK?", câu trả lời là: LiteLLM cho phép swap provider mà không thay code, và nó đã có sẵn circuit-breaker + fallback logic.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 5 — Cost Anatomy
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <header><span class="tag">Cost Anatomy</span><span class="pag">5 / 9</span></header>
+  <h2>$1 112/tháng MVP — và tại sao không phải $654</h2>
+  <div class="row">
+    <div class="col">
+      <div class="card" style="flex-shrink:0;">
+        <h3>Traffic assumptions</h3>
+        <table style="font-size:13px;">
+          <tr><td>Users / day</td><td><b>85</b> (CS 40 · Dispatch 30 · Supervisor 15)</td></tr>
+          <tr><td>Requests / day</td><td><b>800</b> MVP · <b>4 000</b> Growth</td></tr>
+          <tr><td>Peak factor</td><td><b>4×</b> lúc 8–10h &amp; 16–19h</td></tr>
+          <tr><td>LLM routing</td><td>65% Haiku · 30% Sonnet · <b>5% Opus</b></td></tr>
+          <tr><td>Cache hit rate</td><td><b>65%</b> trên status-lookup class = 42% total</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Monthly breakdown (MVP)</h3>
+        <table style="font-size:13px;">
+          <tr><th>Layer</th><th>$/mo</th><th>Scales how?</th></tr>
+          <tr><td>LLM API (post-cache)</td><td>$157</td><td>Near-linear</td></tr>
+          <tr><td>GKE compute + VPN</td><td>$177</td><td>Sub-linear</td></tr>
+          <tr><td>Data (Qdrant·PG·Redis)</td><td>$120</td><td>Step-function</td></tr>
+          <tr><td>Observability (ELK·LF)</td><td>$130</td><td><span class="warn">Super-linear</span></td></tr>
+          <tr><td>Human review</td><td>$68</td><td><span class="warn">Super-linear</span></td></tr>
+          <tr><td><b>Raw total</b></td><td><b>$654</b></td><td></td></tr>
+          <tr><td>× 1.7 hidden cost</td><td class="warn"><b>$1 112</b></td><td></td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="col">
+      <div class="row4" style="flex:0; gap:10px;">
+        <div class="card warn" style="padding:10px 12px;">
+          <div style="font-size:24px;font-weight:700;color:var(--warn);line-height:1;">$417</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">A100 capex · #1 driver (37%)</div>
+        </div>
+        <div class="card" style="padding:10px 12px;">
+          <div style="font-size:24px;font-weight:700;color:var(--accent);line-height:1;">$98</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Opus · 5% req · 62% LLM</div>
+        </div>
+        <div class="card accent2" style="padding:10px 12px;">
+          <div style="font-size:24px;font-weight:700;color:var(--accent2);line-height:1;">$1 112</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">MVP total · Hybrid tier</div>
+        </div>
+        <div class="card accent" style="padding:10px 12px;">
+          <div style="font-size:24px;font-weight:700;color:var(--accent);line-height:1;">$3 273</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Growth 5× · Tier 2</div>
+        </div>
+      </div>
+      <div class="card warn" style="flex:1;">
+        <h3>Hidden costs — cái team hay bỏ quên</h3>
+        <ul style="font-size:13.5px;">
+          <li><b>On-prem A100 capex</b> amortised $417/mo — lớn nhất, ít ai nghĩ tới</li>
+          <li><b>Cloud VPN HA</b> $72/mo — always-on dù fallback không được dùng</li>
+          <li><b>ELK log storage</b> tăng faster than traffic (super-linear at 5×)</li>
+          <li><b>Eval pipeline</b> RAGAS weekly ~$4/run × 4 = $16/mo</li>
+          <li><b>On-prem ops labour</b> ½ ngày/tháng sysadmin = $100/mo</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <p>Số thật: $1 112/tháng ở MVP. Raw total chỉ $654 — nhân 1.7 cho hidden costs ra $1 112.</p>
+    <p><strong>Điểm gây tranh luận nhất</strong>: cost driver #1 không phải LLM API mà là on-prem vLLM capex $417/mo. Đây là điểm đặc trưng của hybrid architecture. Nếu chọn pure cloud-only, con số này biến mất — nhưng mất luôn fallback và PDPA compliance.</p>
+    <p><strong>Trong LLM API</strong>: Opus 4.7 phục vụ 5% requests nhưng chiếm 62% LLM spend ($98/$157). Đây là điểm tối ưu rõ nhất — sẽ nói ở slide tiếp theo.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 6 — Cost Optimization
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <header><span class="tag">Cost Optimization</span><span class="pag">6 / 9</span></header>
+  <h2>3 chiến lược — thêm vào kiến trúc đã có</h2>
+  <p class="section-label">Semantic cache + model routing đã có trong W1 architecture · 3 chiến lược này là lớp bổ sung</p>
+  <div class="row3" style="flex:1;">
+    <div class="card accent2">
+      <h3><span class="pill ok">Do now · S1</span></h3>
+      <p><b>Anthropic Prompt Caching</b></p>
+      <p style="font-size:13px;margin-top:6px;">System prompt 400 tok + SOP context 800 tok lặp lại mọi Sonnet/Opus call. Thêm <code>cache_control: ephemeral</code> vào LiteLLM config → cached tokens tính 10% giá.</p>
+      <p style="font-size:13px;margin-top:auto;color:var(--accent2);">Saving: <b>$39/mo (25% LLM)</b></p>
+      <p style="font-size:12px;color:var(--muted);">Trade-off: pin prompt version — thay system prompt invalidate cache.</p>
+    </div>
+    <div class="card accent2">
+      <h3><span class="pill ok">Do now · S2</span></h3>
+      <p><b>Tighten Opus threshold</b></p>
+      <p style="font-size:13px;margin-top:6px;">Opus = 5% requests nhưng 62% LLM spend. Nâng classifier cosine threshold ≥ 0.85 cho hard-escalation patterns → giảm Opus xuống 2–3%.</p>
+      <p style="font-size:13px;margin-top:auto;color:var(--accent2);">Saving: <b>$45/mo</b></p>
+      <p style="font-size:12px;color:var(--muted);">Gate: nếu human escalation rate &gt; 20% → revert.</p>
+    </div>
+    <div class="card">
+      <h3><span class="pill warn">Later · S3</span></h3>
+      <p><b>Prompt compression (RAG)</b></p>
+      <p style="font-size:13px;margin-top:6px;">Khi SOP volume ≥ 800 req/day: Haiku tóm tắt 5 SOP chunks (800 tok) → 350 tok trước khi gọi Sonnet. Giảm 35% input tokens.</p>
+      <p style="font-size:13px;margin-top:auto;color:var(--accent2);">Benefit: <b>p95 4.2s → 2.8s</b> (latency, not cost)</p>
+      <p style="font-size:12px;color:var(--muted);">Gate: RAGAS faithfulness delta ≤ −0.03 trước rollout.</p>
+    </div>
+  </div>
+  <div class="card" style="flex-shrink:0;">
+    <table style="font-size:13px;">
+      <tr><th>Scenario</th><th>LLM API baseline</th><th>After S1 (cache)</th><th>After S1+S2 (Opus)</th><th>After all 3 (Growth)</th></tr>
+      <tr>
+        <td>Monthly LLM</td>
+        <td>$157</td>
+        <td class="ok">$118 (−25%)</td>
+        <td class="ok"><b>$73 (−54%)</b></td>
+        <td class="ok">$220 vs Growth baseline</td>
+      </tr>
+      <tr>
+        <td>Total w/ hidden</td>
+        <td>$1 112</td>
+        <td>$1 073</td>
+        <td>$1 028</td>
+        <td class="ok"><b>$2 480 vs $3 273 (−24%)</b></td>
+      </tr>
+    </table>
+  </div>
+  <div class="notes">
+    <p>Điểm quan trọng: S1 và S2 đều "do now" vì zero hoặc low infra change. <strong>S1 chỉ là một API flag</strong> trong LiteLLM config. <strong>S2 là tighten một threshold</strong> trong Query Classifier.</p>
+    <p>S3 defer đến Growth vì ở MVP cost của compression call (Haiku) gần bằng saving — benefit thực là latency, giúp tránh breach SLO khi SOP volume tăng.</p>
+    <p>Rejected strategies: Haiku cho SOP (RAGAS score 0.61 &lt; guardrail 0.80), self-hosted thay primary (A100 đã dùng cho fallback, cần GPU thứ 2 $15K+), aggressive TTL (stale status = SLA violation).</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 7 — Reliability
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <header><span class="tag">Reliability &amp; Scaling</span><span class="pag">7 / 9</span></header>
+  <h2>3 kịch bản — và cách hệ thống phản ứng</h2>
+  <table style="flex-shrink:0;">
+    <tr><th>Kịch bản</th><th>Trigger</th><th>Short-term (&lt; 5 min)</th><th>Long-term fix</th></tr>
+    <tr>
+      <td><b>A · Traffic spike 10×</b></td>
+      <td>Flash sale 16h, 85 agents mở đồng thời</td>
+      <td>HPA 3→10 pods (~90s) · Redis queue absorb · LiteLLM rate-limit 200/min</td>
+      <td>CronJob pre-scale lúc 07:45 &amp; 15:45 · TMS webhook trigger</td>
+    </tr>
+    <tr>
+      <td><b>B · Claude API outage</b></td>
+      <td>5xx sustained &gt; 2 min</td>
+      <td>Retry ×2 jitter (500ms, 1.5s) → GPT-4o-mini → on-prem vLLM</td>
+      <td>Circuit breaker OPEN (3 fails/60s) · Anthropic status webhook</td>
+    </tr>
+    <tr>
+      <td><b>C · Latency drift</b></td>
+      <td>Qdrant index grows, p95 creeps 2s→6s</td>
+      <td>Grafana alert p95 &gt; 3.5s · top-k 5→3 · check cache hit rate</td>
+      <td>Qdrant HNSW payload index · ELK ILM archival · Prometheus pre-alert 3.5s</td>
+    </tr>
+  </table>
+  <div class="row">
+    <div class="card">
+      <h3>Fallback chain</h3>
+      <pre style="font-size:11.5px;">Redis cache HIT ──► serve immediately (0 LLM)
+MISS ──► Claude API (primary)
+  5xx / &gt;8s, retry ×2 ──► GPT-4o-mini (secondary)
+    fail ──► on-prem vLLM Llama 3.1 8B (tertiary)
+      VPN down ──► circuit breaker OPEN
+        status class: Redis stale-ok + disclaimer
+        others: "CS phản hồi 10 phút" + auto Freshdesk ticket
+        alert: PagerDuty P1
+Note: PII scrubber không bị bypass ở bất kỳ bước nào</pre>
+    </div>
+    <div class="col">
+      <div class="card" style="flex-shrink:0;">
+        <h3>SLO targets</h3>
+        <table style="font-size:12.5px;">
+          <tr><th>Metric</th><th>Target</th><th>P1 alert</th></tr>
+          <tr><td>Availability</td><td>≥ 99.5%</td><td>&lt; 99.5% in 1h</td></tr>
+          <tr><td>p95 latency</td><td>≤ 5s</td><td>&gt; 5s avg 5min</td></tr>
+          <tr><td>Cache hit rate</td><td>≥ 55%</td><td>&lt; 30%</td></tr>
+          <tr><td>PII scrub fail</td><td>0%</td><td class="warn">Any failure</td></tr>
+          <tr><td>RAGAS faithfulness</td><td>≥ 0.80</td><td>&lt; 0.78 → block deploy</td></tr>
+        </table>
+      </div>
+      <div class="card warn">
+        <h3>Eval gates (từ Day 14)</h3>
+        <ul style="font-size:13px;">
+          <li>RAGAS full suite mỗi release — block nếu faithfulness &lt; 0.80</li>
+          <li>LLM-as-Judge weekly — flag nếu avg score &lt; 3.5/5</li>
+          <li>Online sampling 1% production liên tục (Langfuse)</li>
+          <li>Paired t-test nếu 2 tuần liên tiếp drop (p &lt; 0.05)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <p><strong>Scenario A</strong>: CronJob pre-scale lúc 07:45 và 15:45 — không chờ HPA phản ứng. Load shedding nếu queue &gt; 500: drop SOP, giữ status + ticket.</p>
+    <p><strong>Scenario B</strong>: PII scrubber không bị bypass dù fallback sang OpenAI hay vLLM — cùng một edge path. Circuit breaker: OPEN sau 3 fail/60s, HALF-OPEN probe sau 30s.</p>
+    <p><strong>Eval gates</strong>: reliability không chỉ là uptime — còn là quality under load. RAGAS gate block deploy là engineering discipline, không phải cảm tính.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 8 — Skills Map & Track
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <header><span class="tag">Phase 2 · Track</span><span class="pag">8 / 9</span></header>
+  <h2>Track 3 — AI Application</h2>
+  <div class="row">
+    <div class="col">
+      <div class="card" style="flex-shrink:0;">
+        <h3>Team self-rating (1–5)</h3>
+        <table style="font-size:13px;">
+          <tr><th>Member</th><th>CP1 Business</th><th>CP2 Infra</th><th>CP3 AI Eng</th></tr>
+          <tr><td>Duy Anh</td><td>3</td><td>3</td><td class="ok">4</td></tr>
+          <tr><td>Huy Hoàng</td><td>3</td><td class="ok">4</td><td class="ok">4</td></tr>
+          <tr><td>Nhật Vĩ</td><td class="ok">4</td><td>3</td><td class="ok">4</td></tr>
+          <tr><td>Thanh Phong</td><td>3</td><td>3</td><td>3</td></tr>
+          <tr><td><b>Team avg</b></td><td>3.25</td><td>3.25</td><td class="ok"><b>3.75</b></td></tr>
+        </table>
+      </div>
+      <div class="card accent2">
+        <h3>Why Track 3, not Track 2</h3>
+        <ul style="font-size:13px;">
+          <li>CP3 avg cao nhất (3.75). Build trên thế mạnh.</li>
+          <li>GKE · ELK · Prometheus từ W1 đã done — infra platform không còn là bottleneck.</li>
+          <li>Value còn lại nằm ở agent reasoning, eval pipeline, fine-tuning — toàn bộ là Track 3.</li>
+          <li>W3 Strategy 3 (fine-tune Llama 3.1 8B trên SOP data) đòi hỏi SFT/PEFT depth.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <h3>4 skill gaps cần bù trong Phase 2</h3>
+        <table style="font-size:13px;">
+          <tr><th>Gap</th><th>Tại sao quan trọng</th><th>Priority</th></tr>
+          <tr><td><b>GraphRAG</b></td><td>Multi-hop: order↔route↔driver — flat vector search không đủ</td><td class="warn">High</td></tr>
+          <tr><td><b>Production eval pipeline</b></td><td>Blocker cho W3 S2 + S3 rollout — không có eval gate thì không dám deploy</td><td class="warn">High</td></tr>
+          <tr><td><b>Fine-tuning (SFT/PEFT)</b></td><td>W3 Strategy 3 — Llama 3.1 8B trên SOP + ticket data, thay Sonnet on-prem</td><td>Medium</td></tr>
+          <tr><td><b>Long-term memory</b></td><td>CS tickets kéo dài nhiều ngày — stateless hiện tại không đủ</td><td>Medium</td></tr>
+        </table>
+      </div>
+      <div class="card warn">
+        <h3>Week 1 Phase 2 — next step cụ thể</h3>
+        <p style="font-size:13px;">Deploy RAGAS eval CI trên GitHub Actions. Baseline 4 metrics (faithfulness · relevancy · recall · precision) trên 20-case golden dataset. Bật Prompt Caching (W3 S1), verify <code>cache_read_input_tokens ≥ 60%</code> trong Langfuse sau 3 ngày.</p>
+        <p style="font-size:12px;color:var(--accent2);margin-top:6px;">Eval gate unblocks tất cả W3 optimisations.</p>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <p><strong>Decision path</strong>: technical over business → app over infra → Track 3.</p>
+    <p><strong>4 skill gaps theo priority</strong>: GraphRAG và eval pipeline là High vì blocking. Fine-tuning và memory là Medium — cần nhưng không block Phase 2 start.</p>
+    <p><strong>Week 1 action</strong>: eval pipeline trước tiên vì nó unblock tất cả. Không có eval gate, không thể safely deploy S2 (tighten Opus) hay S3 (compression) — sẽ không biết nếu quality drop.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     SLIDE 9 — Closing
+     ══════════════════════════════════════════════════════ -->
+<section class="slide">
+  <header><span class="tag">Summary</span><span class="pag">9 / 9</span></header>
+  <h2>Key takeaways — 5 phút, 5 quyết định</h2>
+  <div class="row" style="flex:1;">
+    <div class="col">
+      <div class="card accent2">
+        <h3>1 · Bài toán</h3>
+        <p>3PL mid-size, 85 users, 800 req/day, 50K shipments/ngày. Câu trả lời sai hoặc chậm = khiếu nại + SLA miss. Production, không phải demo.</p>
+      </div>
+      <div class="card accent">
+        <h3>2 · Architecture</h3>
+        <p>Hybrid GKE · PII scrubber in-VN · Redis semantic cache · LiteLLM router · on-prem vLLM fallback. 5 ràng buộc enterprise → Hybrid là lựa chọn duy nhất hợp lý.</p>
+      </div>
+      <div class="card">
+        <h3>3 · Cost</h3>
+        <p>$1 112/mo MVP. Cost driver #1 không phải LLM API mà là on-prem capex ($417). Opus 4.7 chiếm 62% LLM spend ở 5% requests.</p>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <h3>4 · Optimization</h3>
+        <p>Prompt Caching + Opus tighten: LLM cost $157 → $73/mo (−54%). Zero infra change cho S1. Compression defer đến Growth — benefit là latency, không phải cost.</p>
+      </div>
+      <div class="card warn">
+        <h3>5 · Reliability</h3>
+        <p>Fallback: Claude → GPT-4o-mini → vLLM → rule-based. PII scrubber never bypassed. RAGAS block deploy nếu faithfulness &lt; 0.80. Pre-scale CronJob 07:45 / 15:45.</p>
+      </div>
+      <div class="card accent2">
+        <h3>6 · Phase 2</h3>
+        <p>Track 3 (AI Application). Week 1: RAGAS CI pipeline → eval gate → unblock tất cả W3 optimisations. 4 skill gaps: GraphRAG · eval pipeline · fine-tuning · memory.</p>
+      </div>
+    </div>
+  </div>
+  <footer class="meta" style="margin-top:4px;">
+    <span>Nhóm 4 · Zone E402 · 2026-04-22</span>
+    <span style="color:var(--accent2);font-size:14px;">Cảm ơn — Q&amp;A</span>
+  </footer>
+  <div class="notes">
+    <p>Tóm lại 5 quyết định: bài toán thật → hybrid vì 5 ràng buộc → $1 112/mo với on-prem capex là driver → LLM cost giảm 54% với 2 flags → reliability có fallback chain + eval gate.</p>
+    <p>Sẵn sàng cho Q&amp;A. Câu hỏi hay gặp: "Tại sao không dùng pure cloud?" → PDPA + SLA degradation. "Tại sao không on-prem hoàn toàn?" → 3–6 tháng setup, $200K GPU, overkill cho 500-staff 3PL.</p>
+  </div>
+</section>
+
+</div><!-- /stage -->
+
+<!-- ══ Speaker notes panel ══════════════════════════════ -->
+<div id="notes-panel">
+  <div id="notes-header">
+    <span>Speaker notes &nbsp;<span class="ind" id="notes-slide-ind"></span></span>
+    <span style="cursor:pointer;" onclick="toggleNotes()">S to close ✕</span>
+  </div>
+  <div id="notes-body"></div>
+</div>
+
+<script>
+const slides   = Array.from(document.querySelectorAll('section.slide'));
+const progress = document.getElementById('progress');
+const hint     = document.getElementById('hint');
+const noteBody = document.getElementById('notes-body');
+const noteInd  = document.getElementById('notes-slide-ind');
+let current  = 0;
+let hintTimer;
+
+function goTo(n) {
+  slides[current].classList.remove('active');
+  current = (n + slides.length) % slides.length;
+  slides[current].classList.add('active');
+  progress.style.width = ((current + 1) / slides.length * 100) + '%';
+  updateNotes();
+  showHint();
+}
+
+function updateNotes() {
+  const noteEl = slides[current].querySelector('.notes');
+  noteBody.innerHTML = noteEl ? noteEl.innerHTML : '<p style="color:var(--muted)">No notes for this slide.</p>';
+  noteInd.textContent = 'slide ' + (current + 1) + ' / ' + slides.length;
+}
+
+function toggleNotes() {
+  document.body.classList.toggle('notes-on');
+  updateNotes();
+}
+
+function showHint() {
+  hint.classList.add('show');
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => hint.classList.remove('show'), 2000);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') goTo(current + 1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   goTo(current - 1);
+  if (e.key === 's' || e.key === 'S')                  toggleNotes();
+});
+
+document.getElementById('nav-next').addEventListener('click', () => goTo(current + 1));
+document.getElementById('nav-prev').addEventListener('click', () => goTo(current - 1));
+
+goTo(0);
+</script>
+</body>
+</html>
